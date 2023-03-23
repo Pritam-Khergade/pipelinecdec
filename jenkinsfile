@@ -1,0 +1,38 @@
+pipeline {
+    agent any
+    stages {
+        stage('Docker install') {
+            steps {
+                sh ''' sudo yum update -y && sudo yum install docker -y 
+                sudo systemctl start docker && sudo systemctl enable docker
+                '''
+            }
+        }
+        stage('build in container ') {
+            steps {
+                sh ''' git clone https://github.com/atulyw/student-ui.git
+                cat << EOF > Dockerfile
+FROM openjdk:8 as builder
+RUN apt-get update -y && apt-get install maven -y 
+WORKDIR /mnt
+COPY student-ui /mnt/student-ui
+WORKDIR /mnt/student-ui
+RUN mvn clean package
+
+FROM tomcat
+COPY --from=builder /mnt/student-ui/target/*.war webapps/
+EOF
+
+sudo docker build -t tomcat-cdec .
+sudo docker tag tomcat-cdec:latest 560805625893.dkr.ecr.us-east-1.amazonaws.com/tomcat-cdec:latest
+                '''
+            }
+        }
+        stage('ECR push') {
+            steps {
+                sh ''' aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin 560805625893.dkr.ecr.us-east-1.amazonaws.com
+                sudo docker push 560805625893.dkr.ecr.us-east-1.amazonaws.com/tomcat-cdec:latest  '''
+               }
+            }
+        }
+}
